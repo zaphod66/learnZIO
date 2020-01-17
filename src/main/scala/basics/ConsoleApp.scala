@@ -11,7 +11,7 @@ object ConsoleApp extends App {
 
   private val program = for {
     _    <- putStrLn("Hello, what is your name?")
-    name <- getStrLn
-    _    <- putStrLn(s"Hello $name!")
+//    name <- getStrLn
+//    _    <- putStrLn(s"Hello $name!")
   } yield ()
 }
