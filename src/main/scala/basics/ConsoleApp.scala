@@ -1,5 +1,7 @@
 package basics
 
+import java.io.IOException
+
 import zio.{App, ZIO}
 import zio.console._
 
@@ -9,7 +11,7 @@ object ConsoleApp extends App {
     _ => 0  // success
   )
 
-  private val program = for {
+  private val program: ZIO[Console, IOException, Unit] = for {
     _    <- putStrLn("Hello, what is your name?")
 //    name <- getStrLn
 //    _    <- putStrLn(s"Hello $name!")
