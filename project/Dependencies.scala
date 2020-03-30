@@ -3,7 +3,7 @@ import sbt._
 object Dependencies {
   private val logbackVersion    = "1.2.3"
   private val loggingVersion    = "3.9.2"
-  private val zioVersion        = "1.0.0-RC15"
+  private val zioVersion        = "1.0.0-RC18-2"
   private val pureConfigVersion = "0.12.1"
 
   lazy val logging = List(
