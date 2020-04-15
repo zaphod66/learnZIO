@@ -1,0 +1,5 @@
+package quickstart
+
+object QuickstartTest {
+
+}

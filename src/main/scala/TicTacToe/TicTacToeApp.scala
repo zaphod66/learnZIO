@@ -1,15 +1,22 @@
 package TicTacToe
 
-import zio.{console, App , ZEnv, ZIO}
-import zio.console.Console
+// see: https://scalac.io/write-command-line-application-with-zio/
+// see: https://github.com/ioleo/zio-by-example
 
-class TicTacToeApp extends App {
+import java.io.IOException
 
-  val program: ZIO[Console, Nothing, Unit] = console.putStrLn("TicTacToe game!")
+import zio.console._
+import zio.{App, ZIO, console}
+
+object TicTacToeApp extends App {
 
   override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] =
-    program.fold(
+    program.foldM(
       error => console.putStrLn(s"Execution failed with: $error") *> ZIO.succeed(1),
       _ => ZIO.succeed(0)
     )
+
+  val program: ZIO[Console, IOException, Unit] =
+    console.putStrLn("TicTacToe game!")
+
 }
