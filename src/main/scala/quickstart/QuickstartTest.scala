@@ -11,7 +11,7 @@ case class Chocolate private (max: Int, tries: Ref[Int]) {
     if (oldTries < max)
       (console.putStrLn("Eating \uD83C\uDF6B.... " + oldTries), oldTries + 1)   // \uD83D \uDC1D // \uD83C \uDF6B
     else
-      (console.putStrLn("No chocolate left!") *> ZIO.fail("dummy"), oldTries)
+      (console.putStrLn("No chocolate left!!") *> ZIO.fail("dummy"), oldTries)
   }.flatten
 }
 
