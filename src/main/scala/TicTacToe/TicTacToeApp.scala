@@ -6,14 +6,15 @@ package TicTacToe
 import java.io.IOException
 
 import zio.console._
-import zio.{App, ZIO, console}
+import zio.{App, ExitCode, ZIO, console}
+import zio.ExitCode._
 
 object TicTacToeApp extends App {
 
-  override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, Int] =
+  override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, ExitCode] =
     program.foldM(
-      error => console.putStrLn(s"Execution failed with: $error") *> ZIO.succeed(1),
-      _ => ZIO.succeed(0)
+      error => console.putStrLn(s"Execution failed with: $error") *> ZIO.succeed(failure),
+      _ => ZIO.succeed(success)
     )
 
   val program: ZIO[Console, IOException, Unit] =

@@ -5,6 +5,7 @@ package quickstart
 import zio._
 import zio.duration._
 import zio.console.Console
+import zio.ExitCode._
 
 case class Chocolate private (max: Int, tries: Ref[Int]) {
   val eat: ZIO[Console, String, Unit] = tries.modify { oldTries =>
@@ -23,7 +24,7 @@ object QuickstartTest extends zio.App {
 
   def parseInt(s: String): Task[Int] = Task(s.toInt)
 
-  def run(args: List[String]): ZIO[ZEnv, Nothing, Int] = {
+  def run(args: List[String]): ZIO[ZEnv, Nothing, ExitCode] = {
 
     val io = for {
       _      <- console.putStrLn("Hello, how many chocolates would you like to eat?!")
@@ -34,8 +35,8 @@ object QuickstartTest extends zio.App {
     } yield num
 
     io.retry(Schedule.recurs(1)).foldM(
-      _ => console.putStrLn(s"you don't like chocolate? ok.... BYE!") *> UIO(1),
-      i => console.putStrLn(s"I hope you enjoyed :-) ZIO! ($i)") *> UIO(0)
+      _ => console.putStrLn(s"you don't like chocolate? ok.... BYE!") *> UIO(failure),
+      i => console.putStrLn(s"I hope you enjoyed :-) ZIO! ($i)") *> UIO(success)
     )
   }
 }
