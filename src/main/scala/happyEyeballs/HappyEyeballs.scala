@@ -1,5 +1,6 @@
 package happyEyeballs
 
+import zio.Exit.{Failure, Success}
 import zio._
 import zio.clock.Clock
 import zio.duration._
@@ -17,6 +18,26 @@ object HappyEyeballs {
           taskWithSignalOnFail.race(sleepOrFailed *> apply(otherTasks, delay))
         }
     }
+  }
+}
+
+object ReleasableHappyEyeballs {
+  def apply[R, T](tasks: List[ZIO[R, Throwable, T]],
+                  delay: Duration,
+                  release: T => ZIO[R, Nothing, Unit]
+                 ): ZIO[R with Clock, Throwable, T] = {
+    for {
+      successful <- Queue.bounded[T](tasks.size)
+      enqueingTasks = tasks.map { task =>
+        task.onExit {
+          case Success(value) => successful.offer(value)
+          case Failure(_) => ZIO.unit
+        }
+      }
+      _ <- HappyEyeballs(enqueingTasks, delay)
+      h :: t <- successful.takeAll
+      _ <- ZIO.foreach(t)(release)
+    } yield h
   }
 }
 
@@ -58,13 +79,16 @@ object TestSocket extends App{
 
   import java.net.{InetAddress, Socket}
 
+  def closeSocket(s: Socket): ZIO[Blocking with Console, Nothing, Unit] =
+    putStrLn(s"closing: ${s.getInetAddress}") *> effectBlocking(s.close()).catchAll(_ => ZIO.unit)
+
   override def run(args: List[String]): ZIO[zio.ZEnv, Nothing, ExitCode] = {
     effectBlocking(InetAddress.getAllByName("debian.org").toList)
       .map { addresses =>
         addresses.map { address =>
           def eff = {
             println(s"trying : $address of ${addresses.size}")
-            Thread.sleep(2500)
+            Thread.sleep(300)
             println(s"over   : $address of ${addresses.size}")
             val socket = new Socket(address, 443)
             println(s"success: $address of ${addresses.size}")
@@ -73,7 +97,7 @@ object TestSocket extends App{
           effectBlocking(eff)
         }
       }
-      .flatMap(tasks => HappyEyeballs(tasks, 2.seconds))
+      .flatMap(tasks => ReleasableHappyEyeballs(tasks, 250.milliseconds, closeSocket))
       .tap(v => putStrLn(s"Connected: ${v.getInetAddress}"))
       .fold(_ => ExitCode.failure, _ => ExitCode.success)
   }
