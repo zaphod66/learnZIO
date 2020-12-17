@@ -3,7 +3,7 @@ import sbt._
 object Dependencies {
   private val logbackVersion    = "1.2.3"
   private val loggingVersion    = "3.9.2"
-  private val zioVersion        = "1.0.0-RC21-2"
+  private val zioVersion        = "1.0.3"
   private val pureConfigVersion = "0.12.1"
 
   lazy val logging = List(
@@ -11,7 +11,8 @@ object Dependencies {
     "com.typesafe.scala-logging" %% "scala-logging"  % loggingVersion
   )
   lazy val zio = List(
-    "dev.zio" %% "zio" % zioVersion
+    "dev.zio" %% "zio" % zioVersion,
+    "dev.zio" %% "zio-streams" % zioVersion
   )
   lazy val pureConfig = List(
     "com.github.pureconfig" %% "pureconfig"      % pureConfigVersion,
