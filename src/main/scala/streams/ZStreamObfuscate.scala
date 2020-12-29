@@ -104,13 +104,16 @@ object ZStreamObfuscate extends App {
       ZStream(adMap).tap(m => putStrLn("adMap: " + m.size.toString))
 
     val managedFile = ZManaged.make(ZIO(new BufferedWriter(new FileWriter(dstFilePath, false))))(f => ZIO(f.close()).orDie)
-    val program = managedFile.use { fw =>
-      fileStream
-        .map(UnconstraintExact.make)
-        .map(obfuscateUE)
-        .tap(ue => ZIO(fw.write(s"${ue.toString}\n")))  // ++ logStream
-        .runCount
-    }
+
+    val stream = ZStream.managed(managedFile)
+      .flatMap{ bw =>
+        fileStream
+          .map(UnconstraintExact.make)
+          .map(obfuscateUE)
+          .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
+      } ++ logStream
+    
+    val program = stream.runCount
 
     program.tap(c => putStrLn(s"processed $c lines.")).exitCode
   }
