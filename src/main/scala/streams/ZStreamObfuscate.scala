@@ -9,7 +9,7 @@ import java.nio.file.Paths
 import java.time.Instant
 
 object ZStreamObfuscate extends App {
-  val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0001000.csv"
+  val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0000010.csv"
   val dstFilePath = srcFilePath + "_obf.csv"
 
   val fileStream  = ZStream.fromFile(Paths.get(srcFilePath))
@@ -21,10 +21,12 @@ object ZStreamObfuscate extends App {
     }
   }
 
-  def toUnconstraintExact(s: String): UnconstraintExact = {
-    val sl = s.split(',')
+  object UnconstraintExact {
+    def make(s: String): UnconstraintExact = {
+      val sl = s.split(',')
 
-    UnconstraintExact(sl(0), sl(1), sl(2), Instant.parse(sl(3)))
+      UnconstraintExact(sl(0), sl(1), sl(2), Instant.parse(sl(3)))
+    }
   }
 
   import scala.util.Random
@@ -39,7 +41,7 @@ object ZStreamObfuscate extends App {
     go(List.empty[Int], length)
   }
 
-  def alphanumericString(length: Int): String = Random.alphanumeric.take(length).mkString("")
+  def alphanumericString(length: Int): String = Random.alphanumeric.take(length).mkString
 
   import scala.collection.mutable
   val emMap = mutable.Map.empty[String, String]
@@ -103,13 +105,13 @@ object ZStreamObfuscate extends App {
 
     val managedFile = ZManaged.make(ZIO(new BufferedWriter(new FileWriter(dstFilePath, false))))(f => ZIO(f.close()).orDie)
     val program = managedFile.use { fw =>
-      (fileStream
-        .map(toUnconstraintExact)
+      fileStream
+        .map(UnconstraintExact.make)
         .map(obfuscateUE)
-        .tap(ue => ZIO(fw.write(s"${ue.toString}\n"))) ++
-        logStream).runDrain
+        .tap(ue => ZIO(fw.write(s"${ue.toString}\n")))  // ++ logStream
+        .runCount
     }
 
-    program.exitCode
+    program.tap(c => putStrLn(s"processed $c lines.")).exitCode
   }
 }
