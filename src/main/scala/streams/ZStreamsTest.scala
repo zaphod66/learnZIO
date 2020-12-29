@@ -3,12 +3,13 @@
 
 package streams
 
-import zio.{App, ExitCode, UIO, URIO, ZIO, random}
+import zio._
 import zio.console.{getStrLn, putStrLn}
 import zio.stream._
 
-import java.lang.System.console
+import java.io.{BufferedWriter, FileWriter}
 import java.nio.file.Paths
+import java.time.Instant
 
 object Types {
   val oneSuccess: ZIO[Any, Nothing, Int] = ZIO.succeed(42)
@@ -65,9 +66,11 @@ object Transforming extends App {
 }
 
 object Transducing extends App {
-  val filePath = "/Users/nscheller/tmp/Stocks.csv"
-  val stream   = ZStream.fromFile(Paths.get(filePath))
-    .transduce(ZTransducer.utf8Decode >>> ZTransducer.splitLines)
-  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = ???
+  val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_1000000.csv"
+  val dstFilePath = srcFilePath + "_obf.csv"
 
+  val fileStream  = ZStream.fromFile(Paths.get(srcFilePath))
+    .transduce(ZTransducer.utf8Decode >>> ZTransducer.splitLines)
+
+  override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = ???
 }
