@@ -1,7 +1,7 @@
 package streams
 
 import zio._
-import zio.console.{getStrLn, putStrLn}
+import zio.console.putStrLn
 import zio.stream._
 
 import java.io.{BufferedWriter, FileWriter}
@@ -9,12 +9,6 @@ import java.nio.file.Paths
 import java.time.Instant
 
 object ZStreamObfuscate extends App {
-  val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0000010.csv"
-  val dstFilePath = srcFilePath + "_obf.csv"
-
-  val fileStream  = ZStream.fromFile(Paths.get(srcFilePath))
-    .transduce(ZTransducer.utf8Decode >>> ZTransducer.splitLines)
-
   case class UnconstraintExact(mt: String, nv: String, tid: String, instant: Instant) {
     override def toString: String = {
       s"$mt,$nv,$tid,${instant.toString}"
@@ -73,7 +67,6 @@ object ZStreamObfuscate extends App {
   def obfuscateCustNo(s: String): String = obfuscateNV(s, s => numericString(s.length), cnMap)
   def obfuscateExact(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), eiMap)
   def obfuscateSmart(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), siMap)
-
   def obfuscateAddr(a: String): String = {
     val sa = a.split(';')
     val na = obfuscateNV(sa(0), s => alphanumericString(s.length), adMap)
@@ -95,15 +88,13 @@ object ZStreamObfuscate extends App {
   }
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
-    val logStream =
-      ZStream(emMap).tap(m => putStrLn("emMap: " + m.size.toString)) ++
-      ZStream(pnMap).tap(m => putStrLn("pnMap: " + m.size.toString)) ++
-      ZStream(cnMap).tap(m => putStrLn("cnMap: " + m.size.toString)) ++
-      ZStream(eiMap).tap(m => putStrLn("eiMap: " + m.size.toString)) ++
-      ZStream(siMap).tap(m => putStrLn("siMap: " + m.size.toString)) ++
-      ZStream(adMap).tap(m => putStrLn("adMap: " + m.size.toString))
+    val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0000010.csv"
+    val dstFilePath = srcFilePath + "_obf.csv"
 
     val managedFile = ZManaged.make(ZIO(new BufferedWriter(new FileWriter(dstFilePath, false))))(f => ZIO(f.close()).orDie)
+
+    val fileStream  = ZStream.fromFile(Paths.get(srcFilePath))
+      .transduce(ZTransducer.utf8Decode >>> ZTransducer.splitLines)
 
     val stream = ZStream.managed(managedFile)
       .flatMap{ bw =>
@@ -111,10 +102,16 @@ object ZStreamObfuscate extends App {
           .map(UnconstraintExact.make)
           .map(obfuscateUE)
           .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
-      } ++ logStream
+      }
     
-    val program = stream.runCount
+    val program = stream.runCount.tap(c => putStrLn(s"processed $c lines.")) *>
+      putStrLn("emMap: " + emMap.size.toString) *>
+      putStrLn("pnMap: " + pnMap.size.toString) *>
+      putStrLn("cnMap: " + cnMap.size.toString) *>
+      putStrLn("eiMap: " + eiMap.size.toString) *>
+      putStrLn("siMap: " + siMap.size.toString) *>
+      putStrLn("adMap: " + adMap.size.toString)
 
-    program.tap(c => putStrLn(s"processed $c lines.")).exitCode
+    program.exitCode
   }
 }
