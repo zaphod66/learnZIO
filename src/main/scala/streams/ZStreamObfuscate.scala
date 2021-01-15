@@ -45,6 +45,54 @@ object ZStreamObfuscate extends App {
   val siMap = mutable.Map.empty[String, String]
   val adMap = mutable.Map.empty[String, String]
 
+//  sealed trait Maps
+//  case object EM extends Maps
+//  case object PN extends Maps
+//  case object CN extends Maps
+//  case object SI extends Maps
+//  case object EI extends Maps
+//  case object AD extends Maps
+
+//  val zemMap = ZRef.make((Map.empty[String, String], EM)).toLayer
+//  val zpnMap = ZRef.make((Map.empty[String, String], PN)).toLayer
+//  val zcnMap = ZRef.make((Map.empty[String, String], CN)).toLayer
+//  val zeiMap = ZRef.make((Map.empty[String, String], SI)).toLayer
+//  val zsiMap = ZRef.make((Map.empty[String, String], EI)).toLayer
+//  val zadMap = ZRef.make((Map.empty[String, String], AD)).toLayer
+  val zemMap = ZRef.make(Map.empty[String, String]).toLayer
+  val zpnMap = ZRef.make(Map.empty[String, String]).toLayer
+  val zcnMap = ZRef.make(Map.empty[String, String]).toLayer
+  val zeiMap = ZRef.make(Map.empty[String, String]).toLayer
+  val zsiMap = ZRef.make(Map.empty[String, String]).toLayer
+  val zadMap = ZRef.make(Map.empty[String, String]).toLayer
+
+  val yyy = ZRef.make(Map.empty[String, String])
+  val xxx = yyy.flatMap(r => r.update(m => m + ("k" -> "v")))
+
+  def mod(m: Map[String, String], k: String, obf: String => String): Map[String, String] = {
+    m.get(k).fold(m + (k -> obf(k)))(_ => m)
+  }
+
+  def mod2(m: Map[String, String], k: String, obf: String => String): (String, Map[String, String]) = {
+    m.get(k).fold {
+      val v = obf(k)
+      (v, m + (k -> v))
+    }(v => (v, m))
+  }
+
+  def zzz(k: String) = for {
+    yy <- yyy
+    zz <- yy.update(m => mod(m, k, identity))
+  } yield zz
+
+  def obfuscateNVR(s: String, f: String => String, urm: UIO[Ref[Map[String, String]]]) = {
+    val fff = for {
+      rm <- urm
+      nv <- rm.modify(m => mod2(m, s, f))
+    } yield (nv, urm)
+    fff
+  }
+
   def obfuscateNV(s: String, f: String => String, m: mutable.Map[String, String]): String = {
     m.get(s).fold {
       val o = f(s)
@@ -114,4 +162,18 @@ object ZStreamObfuscate extends App {
 
     program.exitCode
   }
+}
+
+object TryOut {
+  def xxx: Unit = {
+    val x = for {
+      ref <- Ref.make(100)
+      v1 <- ref.get
+      _ <- ref.set(v1 - 50)
+      v3 <- ref.get
+    } yield v3
+
+  }
+
+  val yyy = Ref.make(List.empty[String]).toLayer
 }
