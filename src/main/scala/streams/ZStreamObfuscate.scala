@@ -38,36 +38,7 @@ object ZStreamObfuscate extends App {
   def alphanumericString(length: Int): String = Random.alphanumeric.take(length).mkString
 
   import scala.collection.mutable
-  val emMap = mutable.Map.empty[String, String]
-  val pnMap = mutable.Map.empty[String, String]
-  val cnMap = mutable.Map.empty[String, String]
-  val eiMap = mutable.Map.empty[String, String]
-  val siMap = mutable.Map.empty[String, String]
-  val adMap = mutable.Map.empty[String, String]
-
-//  sealed trait Maps
-//  case object EM extends Maps
-//  case object PN extends Maps
-//  case object CN extends Maps
-//  case object SI extends Maps
-//  case object EI extends Maps
-//  case object AD extends Maps
-
-//  val zemMap = ZRef.make((Map.empty[String, String], EM)).toLayer
-//  val zpnMap = ZRef.make((Map.empty[String, String], PN)).toLayer
-//  val zcnMap = ZRef.make((Map.empty[String, String], CN)).toLayer
-//  val zeiMap = ZRef.make((Map.empty[String, String], SI)).toLayer
-//  val zsiMap = ZRef.make((Map.empty[String, String], EI)).toLayer
-//  val zadMap = ZRef.make((Map.empty[String, String], AD)).toLayer
-  val zemMap = ZRef.make(Map.empty[String, String]).toLayer
-  val zpnMap = ZRef.make(Map.empty[String, String]).toLayer
-  val zcnMap = ZRef.make(Map.empty[String, String]).toLayer
-  val zeiMap = ZRef.make(Map.empty[String, String]).toLayer
-  val zsiMap = ZRef.make(Map.empty[String, String]).toLayer
-  val zadMap = ZRef.make(Map.empty[String, String]).toLayer
-
-  val yyy = ZRef.make(Map.empty[String, String])
-  val xxx = yyy.flatMap(r => r.update(m => m + ("k" -> "v")))
+  val alMap = mutable.Map.empty[String, String]
 
   def mod(m: Map[String, String], k: String, obf: String => String): Map[String, String] = {
     m.get(k).fold(m + (k -> obf(k)))(_ => m)
@@ -79,11 +50,6 @@ object ZStreamObfuscate extends App {
       (v, m + (k -> v))
     }(v => (v, m))
   }
-
-  def zzz(k: String) = for {
-    yy <- yyy
-    zz <- yy.update(m => mod(m, k, identity))
-  } yield zz
 
   def obfuscateNVR(s: String, f: String => String, urm: UIO[Ref[Map[String, String]]]) = {
     val fff = for {
@@ -109,15 +75,15 @@ object ZStreamObfuscate extends App {
       s"$na@${se(1)}"
     }
 
-    obfuscateNV(s, f, emMap)
+    obfuscateNV(s, f, alMap)
   }
-  def obfuscatePhone(s: String): String  = obfuscateNV(s, s => numericString(s.length), pnMap)
-  def obfuscateCustNo(s: String): String = obfuscateNV(s, s => numericString(s.length), cnMap)
-  def obfuscateExact(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), eiMap)
-  def obfuscateSmart(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), siMap)
+  def obfuscatePhone(s: String): String  = obfuscateNV(s, s => numericString(s.length), alMap)
+  def obfuscateCustNo(s: String): String = obfuscateNV(s, s => numericString(s.length), alMap)
+  def obfuscateExact(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), alMap)
+  def obfuscateSmart(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), alMap)
   def obfuscateAddr(a: String): String = {
     val sa = a.split(';')
-    val na = obfuscateNV(sa(0), s => alphanumericString(s.length), adMap)
+    val na = obfuscateNV(sa(0), s => alphanumericString(s.length), alMap)
     s"$na;${sa(1)};${sa(2)}"
   }
 
@@ -135,8 +101,39 @@ object ZStreamObfuscate extends App {
     in.copy(nv = nvNew)
   }
 
+  trait Persistence {
+    def update(f: Map[String, String] => Map[String, String]): ZIO[Any, Nothing, Unit]
+    def get: ZIO[Any, Nothing, Map[String, String]]
+  }
+
+  case class MapPersistence(rm: Ref[Map[String, String]]) extends Persistence {
+    override def update(f: Map[String, String] => Map[String, String]): ZIO[Any, Nothing, Unit] = rm.update(f)
+    override def get: ZIO[Any, Nothing, Map[String, String]] = rm.get
+  }
+
+  val mapLayer: ZLayer[Any, Nothing, Has[Persistence]] = ZRef.make(Map.empty[String, String]).map(MapPersistence).toLayer
+
+  val ralMap = ZRef.make(Map.empty[String, String])
+  val zalMap = ralMap.toLayer
+
+  val zalLay = for {
+    state <- ZIO.service[Persistence]
+    _  <- state.update(_ + ("k11" -> "v11"))
+    _  <- state.update(_ + ("k12" -> "v12"))
+    s  <- state.get
+    v  = s("k12")
+  } yield (v, state)
+
+  val zalZio = zalLay //.provideLayer(mapLayer)
+  val zalPro = for {
+    per <- zalZio
+    str <- per._2.get.map(_.toString)
+    _   <- putStrLn(per._1 + ", " + str)
+  } yield ()
+
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
-    val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0000010.csv"
+  //  val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0000010.csv"
+    val srcFilePath = "/Users/nscheller/work/gitrepos/projects/zaphod66/learnZIO/unconstraintExact_0000010.csv"
     val dstFilePath = srcFilePath + "_obf.csv"
 
     val managedFile = ZManaged.make(ZIO(new BufferedWriter(new FileWriter(dstFilePath, false))))(f => ZIO(f.close()).orDie)
@@ -150,30 +147,13 @@ object ZStreamObfuscate extends App {
           .map(UnconstraintExact.make)
           .map(obfuscateUE)
           .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
-      }
-    
-    val program = stream.runCount.tap(c => putStrLn(s"processed $c lines.")) *>
-      putStrLn("emMap: " + emMap.size.toString) *>
-      putStrLn("pnMap: " + pnMap.size.toString) *>
-      putStrLn("cnMap: " + cnMap.size.toString) *>
-      putStrLn("eiMap: " + eiMap.size.toString) *>
-      putStrLn("siMap: " + siMap.size.toString) *>
-      putStrLn("adMap: " + adMap.size.toString)
+      }.runCount
 
+    import zio.console.Console
+    val zalEnv = mapLayer ++ Console.live
+    val zalCom = zalPro.provideLayer(zalEnv)
+    val program = stream.tap(c => putStrLn(s"processed $c lines.")) *>
+      putStrLn("alMap: " + alMap.size.toString) *> zalCom
     program.exitCode
   }
-}
-
-object TryOut {
-  def xxx: Unit = {
-    val x = for {
-      ref <- Ref.make(100)
-      v1 <- ref.get
-      _ <- ref.set(v1 - 50)
-      v3 <- ref.get
-    } yield v3
-
-  }
-
-  val yyy = Ref.make(List.empty[String]).toLayer
 }
