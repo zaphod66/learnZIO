@@ -111,24 +111,39 @@ object ZStreamObfuscate extends App {
     override def get: ZIO[Any, Nothing, Map[String, String]] = rm.get
   }
 
-  val mapLayer: ZLayer[Any, Nothing, Has[Persistence]] = ZRef.make(Map.empty[String, String]).map(MapPersistence).toLayer
+  val mapZIO: ZIO[Any, Nothing, MapPersistence] = ZRef.make(Map.empty[String, String]).map(MapPersistence)
+  val mapLayer: ZLayer[Any, Nothing, Has[Persistence]] = mapZIO.toLayer
+
+  trait Obfuscator {
+    def tObfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact]
+  }
+
+  case class PersObfuscator(pers: Persistence) extends Obfuscator {
+    override def tObfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = UIO(ue.copy(nv = "v11"))
+  }
+
+  val perZIO: ZIO[Any, Nothing, Obfuscator] = mapZIO.map(PersObfuscator)
+  val perLayer:ZLayer[Any, Nothing, Has[Obfuscator]] = perZIO.toLayer
 
   val ralMap = ZRef.make(Map.empty[String, String])
   val zalMap = ralMap.toLayer
 
   val zalLay = for {
-    state <- ZIO.service[Persistence]
-    _  <- state.update(_ + ("k11" -> "v11"))
-    _  <- state.update(_ + ("k12" -> "v12"))
-    s  <- state.get
-    v  = s("k12")
-  } yield (v, state)
+//    pers <- ZIO.service[Persistence]
+    obfu <- ZIO.service[Obfuscator]
+//    _  <- pers.update(_ + ("k11" -> "v11"))
+//    _  <- pers.update(_ + ("k12" -> "v12"))
+    u1 <- obfu.tObfuscateUE(UnconstraintExact("mt", "k11", "tid1", Instant.now()))
+    u2 <- obfu.tObfuscateUE(UnconstraintExact("mt", "k11", "tid2", Instant.now()))
+//    s  <- pers.get
+//    v  = s("k12")
+  } yield (u1, u2)
 
-  val zalZio = zalLay //.provideLayer(mapLayer)
   val zalPro = for {
-    per <- zalZio
-    str <- per._2.get.map(_.toString)
-    _   <- putStrLn(per._1 + ", " + str)
+    per <- zalLay
+//    str <- per._2.get.map(_.toString)
+//    _   <- putStrLn(per._1 + ", " + str)
+    _ <- putStrLn(s"${per._1} = ${per._2}")
   } yield ()
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
@@ -149,11 +164,38 @@ object ZStreamObfuscate extends App {
           .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
       }.runCount
 
+    val obfPr1 = for {
+      per <- ZIO.service[Obfuscator]
+      no  <- ZStream.managed(managedFile).flatMap { bw =>
+        fileStream
+          .map(UnconstraintExact.make)
+          .mapM(per.tObfuscateUE)
+          .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
+      }.runCount
+    } yield no
+
+    val obfPr2 = for {
+      per <- ZIO.service[Obfuscator]
+      no  <- (for {
+                bw <- ZStream.managed(managedFile)
+              } yield fileStream
+                      .map(UnconstraintExact.make)
+                      .mapM(per.tObfuscateUE)
+                      .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
+             ).runCount
+    } yield no
+
     import zio.console.Console
-    val zalEnv = mapLayer ++ Console.live
-    val zalCom = zalPro.provideLayer(zalEnv)
-    val program = stream.tap(c => putStrLn(s"processed $c lines.")) *>
-      putStrLn("alMap: " + alMap.size.toString) *> zalCom
-    program.exitCode
+    import zio.blocking.Blocking
+    val obfEnv = Console.live ++ perLayer ++ Blocking.live
+    val obfCo1 = obfPr1.provideLayer(obfEnv)
+    val obfCo2 = obfPr2.provideLayer(obfEnv)
+
+//    val zalEnv = Console.live ++ perLayer // ++ mapLayer
+//    val zalCom = zalPro.provideLayer(zalEnv)
+//    val program = stream.tap(c => putStrLn(s"processed $c lines.")) *>
+//      putStrLn("alMap: " + alMap.size.toString) *> zalCom *> obfHoo *> obfHo2
+    val program = obfCo2
+    program.tap(l => putStrLn(s"Ref processed $l lines.")).exitCode
   }
 }
