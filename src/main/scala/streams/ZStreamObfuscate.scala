@@ -46,16 +46,16 @@ object ZStreamObfuscate extends App {
   }
 
   trait Obfuscator {
-    def obfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact]
+    def obfuscate(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact]
   }
 
   case class PersObfuscator(pers: Persistence) extends Obfuscator {
     /**
-     * @param s value we want to have a unique obfuscated value for
-     * @param e extractor, which part of of 's' is the key in the map
-     * @param f obfuscator function
-     * @param m the map, which hold already obfuscated values, with a key the extractor provides
-     * @return a tuple with the currently obfuscated value and the map containing all values
+     * @param s value we want to obfuscate
+     * @param e extractor, which part of 's' is to be obfuscated
+     * @param f obfuscate function
+     * @param m a map, which holds already obfuscated values, the key is extracted by the extractor
+     * @return a tuple with the currently obfuscated value and a map containing all key value pairs
      */
     private def modifyMap(s: String, e: String => String, f: String => String, m: Map[String, String]): (String, Map[String, String]) = {
       val ext = e(s)
@@ -90,7 +90,7 @@ object ZStreamObfuscate extends App {
       }
     }
 
-    override def obfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = {
+    override def obfuscate(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = {
       pers.modify(modify(ue)).map(s => ue.copy(nv = s))
     }
   }
@@ -114,7 +114,7 @@ object ZStreamObfuscate extends App {
         ob <- ZIO.service[Obfuscator]
         no <- fileStream
           .map(UnconstraintExact.make)
-          .mapM(ob.obfuscateUE)
+          .mapM(ob.obfuscate)
           .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
           .runCount
       } yield no
