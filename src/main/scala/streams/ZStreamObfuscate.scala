@@ -1,11 +1,10 @@
 package streams
 
 import zio._
-import zio.blocking.Blocking
 import zio.console.putStrLn
 import zio.stream._
 
-import java.io.{BufferedWriter, FileWriter, Writer}
+import java.io.{BufferedWriter, FileWriter}
 import java.nio.file.Paths
 import java.time.Instant
 
@@ -79,7 +78,7 @@ object ZStreamObfuscate extends App {
     }
     private def createAlphanumericString(s: String): String = alphanumericString(s.length)
 
-    private def modifyRef(ue: UnconstraintExact)(m: Map[String, String]): (String, Map[String, String]) = {
+    private def modify(ue: UnconstraintExact)(m: Map[String, String]): (String, Map[String, String]) = {
       ue.mt match {
         case "SameCustomerNumberMatcher$"  => modifyMap(ue.nv, identity, createNumericString, m)
         case "SamePhoneNumberMatcher$"     => modifyMap(ue.nv, identity, createNumericString, m)
@@ -92,13 +91,13 @@ object ZStreamObfuscate extends App {
     }
 
     override def obfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = {
-      pers.modify(modifyRef(ue)).map(s => ue.copy(nv = s))
+      pers.modify(modify(ue)).map(s => ue.copy(nv = s))
     }
   }
 
-  val mapZIO: ZIO[Any, Nothing, MapPersistence] = ZRef.make(Map.empty[String, String]).map(MapPersistence)
-  val perZIO: ZIO[Any, Nothing, Obfuscator] = mapZIO.map(PersObfuscator)
-  val perLayer:ZLayer[Any, Nothing, Has[Obfuscator]] = perZIO.toLayer
+  val persistenceZIO: ZIO[Any, Nothing, Persistence] = ZRef.make(Map.empty[String, String]).map(MapPersistence)
+  val obfuscatorZIO: ZIO[Any, Nothing, Obfuscator]  = persistenceZIO.map(PersObfuscator)
+  val obfuscatorLayer:ZLayer[Any, Nothing, Has[Obfuscator]] = obfuscatorZIO.toLayer
 
   override def run(args: List[String]): URIO[zio.ZEnv, ExitCode] = {
   //  val srcFilePath = "/Users/nschelle/work/gitrepos/zaphod66/learnZIO/unconstraintExact_0000010.csv"
@@ -110,12 +109,12 @@ object ZStreamObfuscate extends App {
     val fileStream  = ZStream.fromFile(Paths.get(srcFilePath))
       .transduce(ZTransducer.utf8Decode >>> ZTransducer.splitLines)
 
-    val obfuscateZIO = managedFile.use { bw =>
+    val transformZIO = managedFile.use { bw =>
       for {
-        per <- ZIO.service[Obfuscator]
-        no  <- fileStream
+        ob <- ZIO.service[Obfuscator]
+        no <- fileStream
           .map(UnconstraintExact.make)
-          .mapM(per.obfuscateUE)
+          .mapM(ob.obfuscateUE)
           .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
           .runCount
       } yield no
@@ -123,8 +122,8 @@ object ZStreamObfuscate extends App {
 
     import zio.console.Console
     import zio.blocking.Blocking
-    val obfEnv  = Console.live ++ Blocking.live ++ perLayer
-    val program = obfuscateZIO.provideLayer(obfEnv)
+    val obfEnv  = Console.live ++ Blocking.live ++ obfuscatorLayer
+    val program = transformZIO.provideLayer(obfEnv)
 
     program.tap(l => putStrLn(s"Ref processed $l lines.")).exitCode
   }
