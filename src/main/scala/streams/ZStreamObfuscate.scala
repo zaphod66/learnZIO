@@ -38,59 +38,27 @@ object ZStreamObfuscate extends App {
 
   def alphanumericString(length: Int): String = Random.alphanumeric.take(length).mkString
 
-  import scala.collection.mutable
-  val alMap = mutable.Map.empty[String, String]
-
-  def mod(m: Map[String, String], k: String, obf: String => String): Map[String, String] = {
-    m.get(k).fold(m + (k -> obf(k)))(_ => m)
-  }
-
-  def obfuscateNV(s: String, f: String => String, m: mutable.Map[String, String]): String = {
-    m.get(s).fold {
-      val o = f(s)
-      m.put(s, o)
-
-      o
-    }(identity)
-  }
-
-  def obfuscateEmail(s: String): String = {
-    def f(e: String): String = {
-      val se = e.split('@')
-      val na = alphanumericString(se(0).length)
-      s"$na@${se(1)}"
-    }
-
-    obfuscateNV(s, f, alMap)
-  }
-  def obfuscatePhone(s: String): String  = obfuscateNV(s, s => numericString(s.length), alMap)
-  def obfuscateCustNo(s: String): String = obfuscateNV(s, s => numericString(s.length), alMap)
-  def obfuscateExact(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), alMap)
-  def obfuscateSmart(s: String): String  = obfuscateNV(s, s => alphanumericString(s.length), alMap)
-  def obfuscateAddr(a: String): String = {
-    val sa = a.split(';')
-    val na = obfuscateNV(sa(0), s => alphanumericString(s.length), alMap)
-    s"$na;${sa(1)};${sa(2)}"
-  }
-
   trait Persistence {
-    def update(f: Map[String, String] => Map[String, String]): ZIO[Any, Nothing, Unit]
     def modify(f: Map[String, String] => (String, Map[String, String])): ZIO[Any, Nothing, String]
-    def get: ZIO[Any, Nothing, Map[String, String]]
   }
 
   case class MapPersistence(rm: Ref[Map[String, String]]) extends Persistence {
-    override def update(f: Map[String, String] => Map[String, String]): ZIO[Any, Nothing, Unit] = rm.update(f)
     override def modify(f: Map[String, String] => (String, Map[String, String])): ZIO[Any, Nothing, String] = rm.modify(f)
-    override def get: ZIO[Any, Nothing, Map[String, String]] = rm.get
   }
 
   trait Obfuscator {
-    def tObfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact]
+    def obfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact]
   }
 
   case class PersObfuscator(pers: Persistence) extends Obfuscator {
-    def modifyMap(s: String, e: String => String, f: String => String, m: Map[String, String]): (String, Map[String, String]) = {
+    /**
+     * @param s value we want to have a unique obfuscated value for
+     * @param e extractor, which part of of 's' is the key in the map
+     * @param f obfuscator function
+     * @param m the map, which hold already obfuscated values, with a key the extractor provides
+     * @return a tuple with the currently obfuscated value and the map containing all values
+     */
+    private def modifyMap(s: String, e: String => String, f: String => String, m: Map[String, String]): (String, Map[String, String]) = {
       val ext = e(s)
       m.get(ext).fold {
         val v = f(s)
@@ -98,46 +66,33 @@ object ZStreamObfuscate extends App {
       } (v => (v, m))
     }
 
-    def createNumericString(s: String): String = numericString(s.length)
-    def createAddr(a: String): String = {
+    private def createNumericString(s: String): String = numericString(s.length)
+    private def createAddr(a: String): String = {
       val sa = a.split(';')
       val na = alphanumericString(sa(0).length)
       s"$na;${sa(1)};${sa(2)}"
     }
-    def createEmail(e: String): String = {
+    private def createEmail(e: String): String = {
       val se = e.split('@')
       val na = alphanumericString(se(0).length)
       s"$na@${se(1)}"
     }
-    def createAlphanumericString(s: String): String = alphanumericString(s.length)
+    private def createAlphanumericString(s: String): String = alphanumericString(s.length)
 
-    def modifyRef(ue: UnconstraintExact)(m: Map[String, String]): (String, Map[String, String]) = {
+    private def modifyRef(ue: UnconstraintExact)(m: Map[String, String]): (String, Map[String, String]) = {
       ue.mt match {
         case "SameCustomerNumberMatcher$"  => modifyMap(ue.nv, identity, createNumericString, m)
         case "SamePhoneNumberMatcher$"     => modifyMap(ue.nv, identity, createNumericString, m)
-        case "SameShipmentAddressMatcher$" => modifyMap(ue.nv, s => s.split(';')(0), createAddr  , m)
-        case "SameBillingAddressMatcher$"  => modifyMap(ue.nv, s => s.split(';')(0), createAddr  , m)
-        case "SameEmailMatcher$"           => modifyMap(ue.nv, s => s.split('@')(0), createEmail , m)
+        case "SameShipmentAddressMatcher$" => modifyMap(ue.nv, s => s.split(';')(0), createAddr, m)
+        case "SameBillingAddressMatcher$"  => modifyMap(ue.nv, s => s.split(';')(0), createAddr, m)
+        case "SameEmailMatcher$"           => modifyMap(ue.nv, s => s.split('@')(0), createEmail, m)
         case "SameDIExactIdMatcher$"       => modifyMap(ue.nv, identity, createAlphanumericString, m)
         case "SameDISmartIdMatcher$"       => modifyMap(ue.nv, identity, createAlphanumericString, m)
       }
     }
 
-    override def tObfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = {
+    override def obfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = {
       pers.modify(modifyRef(ue)).map(s => ue.copy(nv = s))
-    }
-
-    def mutableObfuscateUE(ue: UnconstraintExact): ZIO[Any, Nothing, UnconstraintExact] = {
-      val obfNv = ue.mt match {
-        case "SameCustomerNumberMatcher$"  => obfuscateCustNo(ue.nv)
-        case "SamePhoneNumberMatcher$"     => obfuscatePhone(ue.nv)
-        case "SameShipmentAddressMatcher$" => obfuscateAddr(ue.nv)
-        case "SameBillingAddressMatcher$"  => obfuscateAddr(ue.nv)
-        case "SameEmailMatcher$"           => obfuscateEmail(ue.nv)
-        case "SameDIExactIdMatcher$"       => obfuscateExact(ue.nv)
-        case "SameDISmartIdMatcher$"       => obfuscateSmart(ue.nv)
-      }
-      UIO(ue.copy(nv = obfNv))
     }
   }
 
@@ -155,12 +110,12 @@ object ZStreamObfuscate extends App {
     val fileStream  = ZStream.fromFile(Paths.get(srcFilePath))
       .transduce(ZTransducer.utf8Decode >>> ZTransducer.splitLines)
 
-    val obfPro = managedFile.use { bw =>
+    val obfuscateZIO = managedFile.use { bw =>
       for {
         per <- ZIO.service[Obfuscator]
         no  <- fileStream
           .map(UnconstraintExact.make)
-          .mapM(per.tObfuscateUE)
+          .mapM(per.obfuscateUE)
           .tap(ue => ZIO(bw.write(s"${ue.toString}\n")))
           .runCount
       } yield no
@@ -169,7 +124,7 @@ object ZStreamObfuscate extends App {
     import zio.console.Console
     import zio.blocking.Blocking
     val obfEnv  = Console.live ++ Blocking.live ++ perLayer
-    val program = obfPro.provideLayer(obfEnv)
+    val program = obfuscateZIO.provideLayer(obfEnv)
 
     program.tap(l => putStrLn(s"Ref processed $l lines.")).exitCode
   }
